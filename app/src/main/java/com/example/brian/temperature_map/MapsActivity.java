@@ -1,7 +1,11 @@
 package com.example.brian.temperature_map;
 
+import android.app.Service;
 import android.content.Intent;
+import android.os.Handler;
+import android.os.IBinder;
 import android.os.Message;
+import android.os.SystemClock;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v7.widget.Toolbar;
@@ -25,6 +29,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.lang.*;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
@@ -32,6 +39,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     static final LatLng temp_probe1 = new LatLng(33.9756, -117.3313);
 
     private TextView tv;
+
+    double tempF;
+    Marker TEMP_PROBE1;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,15 +56,29 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         //runUdpClient();
         //finish();
 
-        new Thread(new Server()).start();
+        /*
+        new Thread(new UDPServer()).start();
+        try{
+            Thread.sleep(200);
+        }
+        catch(InterruptedException e){}
+        */
+        tempF = 0.00;
+        UDPListenerService UDPListener = new UDPListenerService();
+        UDPListener.startListenForUDPBroadcast();
+        //UDPListener.UDPBroadcastThread.run();UDPBroadcastThread
+        //new Thread(new UDPListener.UDPBroadcastThread()).start();
         /*
         try {
             Thread.sleep(10);
         } catch (InterruptedException e) { }
         */
-
+        //mHandler = new Handler();
+        //startRepeatingTask();
+        updateTempMarker.run();
     }
 
+    boolean doneTemp = false;
 
     /**
      * Manipulates the map once available.
@@ -76,19 +101,79 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         //mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(, 10));
 
 
-
-        Marker TEMP_PROBE1 = mMap.addMarker(new MarkerOptions()
-                .title("draggable marker")
-                .snippet("HELLO WORLD")
+         TEMP_PROBE1 = mMap.addMarker(new MarkerOptions()
+                .title("Temperature")
+                .snippet(Double.toString(tempF))
                 .position(temp_probe1)
                 .draggable(true));
 
         TEMP_PROBE1.showInfoWindow();
         System.out.println("created temp_probe1 marker");
+        doneTemp = true;
     }
+
+
+     Handler mHandler = new Handler();
+
+    private Runnable updateTempMarker = new Runnable(){
+        public void run(){
+            if(doneTemp)
+            TEMP_PROBE1.setSnippet(Double.toString(tempF));
+            System.out.println("updating tempMarker");
+            mHandler.postDelayed(updateTempMarker, 1000);
+        }
+    };
+    //mHandler.post(updateTempMarker);
+
+
     private static final int UDP_SERVER_PORT = 11000;
 
-    public class Server implements Runnable {
+    DatagramPacket UDPPacket;
+    DatagramSocket Socket;
+
+
+    Runnable Server = new  Runnable() {
+
+        //bool done = false;
+        @Override
+        public void run() {
+
+            System.out.println("HELLO");
+            try{
+                InetAddress broadcastIP = InetAddress.getByName("192.168.8.100");
+                Socket = new DatagramSocket(UDP_SERVER_PORT, broadcastIP);
+
+            }
+            catch(Exception e){
+                System.out.println("Socket Bind error");
+            }
+            try {
+                //InetAddress serverAddr = InetAddress.getByName("192.168.8.100");
+                System.out.println("\nServer: Start connecting\n");
+                byte[] buf = new byte[32];
+                DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                DatagramSocket socket = new DatagramSocket(UDP_SERVER_PORT);
+
+                System.out.println("Server: Receiving\n");
+                socket.receive(packet);
+
+                System.out.println("Server: Message received: ‘" + new String(packet.getData()) + "’\n");
+                System.out.println("Server: Succeed!\n");
+            } catch (Exception e) {
+                System.out.println("Server: Error!\n");
+            }
+           // updateStatus();
+            mHandler.postDelayed(Server, 100);
+        }
+
+    };
+
+    void startRepeatingTask(){
+        Server.run();
+
+    }
+
+    public class UDPServer implements Runnable {
 
         @Override
         public void run() {
@@ -101,7 +186,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 DatagramPacket packet = new DatagramPacket(buf, buf.length);
                 System.out.println("Server: Receiving\n");
                 socket.receive(packet);
-                System.out.println("Server: Message received: ‘" + new String(packet.getData()) + "’\n");
+                System.out.println("Server: Message received: ‘" + new String(packet.getData()) + ":" + "’\n");
                 System.out.println("Server: Succeed!\n");
             } catch (Exception e) {
                 System.out.println("Server: Error!\n");
@@ -109,42 +194,135 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     };
 
-}
-/*
 
- class MyDatagramReceiver extends Thread {
-    private boolean bKeepRunning = true;
-    private String lastMessage = "";
+    //=================================================
 
-    public void run() {
-        String message;
-        byte[] lmessage = new byte[MAX_UDP_DATAGRAM_LEN];
-        DatagramPacket packet = new DatagramPacket(lmessage, lmessage.length);
+    public class UDPListenerService extends Service {
+        //static String UDP_BROADCAST = "UDPBroadcast";
 
-        try {
-            DatagramSocket socket = new DatagramSocket(UDP_SERVER_PORT);
+        //Boolean shouldListenForUDPBroadcast = false;
+        DatagramSocket socket;
 
-            while(bKeepRunning) {
-                socket.receive(packet);
-                message = new String(lmessage, 0, packet.getLength());
-                lastMessage = message;
-                runOnUiThread(updateTextMessage);
+        private void listenAndWaitAndThrowIntent(InetAddress broadcastIP, Integer port) throws Exception {
+            byte[] recvBuf = new byte[32];
+            if (socket == null || socket.isClosed()) {
+                socket = new DatagramSocket(port, broadcastIP);
+                socket.setBroadcast(true);
             }
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
+            //socket.setSoTimeout(1000);
+            DatagramPacket packet = new DatagramPacket(recvBuf, recvBuf.length);
+            Log.e("UDP", "Waiting for UDP broadcast");
+            System.out.println("udp waiting for broadcast");
+            socket.receive(packet);
 
-        if (socket != null) {
+            String senderIP = packet.getAddress().getHostAddress();
+            String message = new String(packet.getData()).trim();
+            parseInput(recvBuf);
+            System.out.print("temperature in F: ");
+            System.out.println(tempF);
+            Log.e("UDP", "Got UDB broadcast from " + senderIP + ", message: " + message);
+
+            broadcastIntent(senderIP, message);
             socket.close();
         }
+
+        private void broadcastIntent(String senderIP, String message) {
+            //Intent intent = new Intent(UDPListenerService.UDP_BROADCAST);
+            //intent.putExtra("sender", senderIP);
+           // intent.putExtra("message", message);
+            //sendBroadcast(intent);
+        }
+
+        Thread UDPBroadcastThread;
+
+        void startListenForUDPBroadcast() {
+            UDPBroadcastThread = new Thread(new Runnable() {
+                public void run() {
+                    try {
+                        InetAddress broadcastIP = InetAddress.getByName("192.168.8.255"); //172.16.238.42 //192.168.1.255
+                        Integer port = 11000;
+                        while (shouldRestartSocketListen) {
+                            listenAndWaitAndThrowIntent(broadcastIP, port);
+                        }
+                        //if (!shouldListenForUDPBroadcast) throw new ThreadDeath();
+                    } catch (Exception e) {
+                        Log.i("UDP", "no longer listening for UDP broadcasts cause of error " + e.getMessage());
+                        System.out.println("UDP no longer listening for udp broadcasts");
+                        run();
+                    }
+                }
+            });
+            UDPBroadcastThread.start();
+        }
+
+        private Boolean shouldRestartSocketListen=true;
+
+        void stopListen() {
+            shouldRestartSocketListen = false;
+            socket.close();
+        }
+
+        @Override
+        public void onCreate() {
+
+        };
+
+        @Override
+        public void onDestroy() {
+            stopListen();
+        }
+
+
+        @Override
+        public int onStartCommand(Intent intent, int flags, int startId) {
+            shouldRestartSocketListen = true;
+            startListenForUDPBroadcast();
+            Log.i("UDP", "Service started");
+            return START_STICKY;
+        }
+
+        @Override
+        public IBinder onBind(Intent intent) {
+            return null;
+        }
+
+        public void parseInput(byte[] input){
+            char[] tempBuff = new char[6];
+            for(int i = 0; i < 3; i++){
+                if(input[i] == '='){
+                    System.out.println("found = !!!!");
+                }
+            }
+
+            for(int i = 3; i < 9; i++){
+                if(input[i]==',')
+                    break;
+                tempBuff[i-3] = (char)input[i];
+            }
+
+            //boolean isDigit = false;
+            char[] tempBuff1 = new char[6];
+            System.out.print("tempBuff: ");
+            for(int i = 0; i < 6; i++){
+                System.out.print(tempBuff[i]);
+                if(Character.isDigit(tempBuff[i])){
+                    System.out.print("is digit");
+                    tempBuff1[i]= tempBuff[i];
+                }
+                if(tempBuff[i]=='.')
+                    tempBuff1[i]= tempBuff[i];
+
+            }
+            System.out.println();
+            StringBuilder sb = new StringBuilder();
+            sb.append(tempBuff1);
+            tempF = Double.parseDouble(sb.toString());
+            System.out.print("tempF: ");
+            System.out.println(tempF);
+            //TEMP_PROBE1.setSnippet(Double.toString(tempF));
+
+        }
     }
 
-    public void kill() {
-        bKeepRunning = false;
-    }
 
-    public String getLastMessage() {
-        return lastMessage;
-    }
 }
-*/
