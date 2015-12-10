@@ -41,8 +41,36 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private TextView tv;
 
     double tempF;
+    double lat = 33.9756;
+    double lng = -117.3313;
     Marker TEMP_PROBE1;
 
+    class MyInfoWindowAdapter implements GoogleMap.InfoWindowAdapter {
+
+        private final View myContentsView;
+
+        MyInfoWindowAdapter(){
+            myContentsView = getLayoutInflater().inflate(R.layout.custom_info_contents, null);
+        }
+
+        @Override
+        public View getInfoContents(Marker marker) {
+
+            TextView tvTitle = ((TextView)myContentsView.findViewById(R.id.title));
+            tvTitle.setText(marker.getTitle());
+            TextView tvSnippet = ((TextView)myContentsView.findViewById(R.id.snippet));
+            tvSnippet.setText(marker.getSnippet());
+
+            return myContentsView;
+        }
+
+        @Override
+        public View getInfoWindow(Marker marker) {
+            // TODO Auto-generated method stub
+            return null;
+        }
+
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -117,9 +145,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private Runnable updateTempMarker = new Runnable(){
         public void run(){
-            if(doneTemp)
-            TEMP_PROBE1.setSnippet(Double.toString(tempF));
-            System.out.println("updating tempMarker");
+            if(doneTemp) {
+                TEMP_PROBE1.setSnippet("TempF: " + Double.toString(tempF));//+" \n"+"Kelvin: " + Double.toString(tempF+273.15));
+                System.out.println("updating tempMarker");
+                TEMP_PROBE1.showInfoWindow();
+
+            }
             mHandler.postDelayed(updateTempMarker, 1000);
         }
     };
@@ -287,6 +318,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
 
         public void parseInput(byte[] input){
+
+            int currPos = 0;
             char[] tempBuff = new char[6];
             for(int i = 0; i < 3; i++){
                 if(input[i] == '='){
@@ -298,8 +331,38 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 if(input[i]==',')
                     break;
                 tempBuff[i-3] = (char)input[i];
+                currPos = i;
+            }
+            currPos+=2;
+            char[] latBuff = new char[15];
+            System.out.print("lat: ");
+            int counter = 0;
+            for(int i = currPos; i < 22; i++) {
+
+                if (input[i] == ',')
+                    break;
+                latBuff[counter] = (char)input[i];
+                currPos = i;
+                counter++;
+                System.out.print(latBuff[i-currPos]);
+            }
+            currPos+=2;
+
+            char[] lngBuff = new char[15];
+            counter = 0;
+            System.out.print("lng: ");
+            for(int i = currPos; i < 32; i++) {
+                System.out.print((char)input[i]);
+                if (input[i] == ';')
+                    break;
+                lngBuff[counter] = (char)input[i];
+                currPos = i;
+                counter++;
+                System.out.print(lngBuff[i-currPos]);
+
             }
 
+            System.out.println();
             //boolean isDigit = false;
             char[] tempBuff1 = new char[6];
             System.out.print("tempBuff: ");
@@ -311,14 +374,53 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 }
                 if(tempBuff[i]=='.')
                     tempBuff1[i]= tempBuff[i];
-
             }
             System.out.println();
+
+            char[] latBuff1 = new char[15];
+            System.out.print("latBuff: ");
+            for(int i = 0; i < latBuff.length; i++){
+                System.out.print(latBuff[i]);
+                if(Character.isDigit(latBuff[i])){
+                    System.out.print("is digit");
+                    latBuff1[i]= latBuff[i];
+                }
+                if(latBuff[i]=='.')
+                    latBuff1[i]= latBuff[i];
+            }
+            System.out.println();
+
+            char[] lngBuff1 = new char[15];
+            System.out.print("lngBuff: ");
+            for(int i = 0; i < lngBuff.length; i++){
+                System.out.print(lngBuff[i]);
+                if(Character.isDigit(lngBuff[i])){
+                    System.out.print("is digit");
+                    lngBuff1[i]= lngBuff[i];
+                }
+                if(lngBuff[i] == '-')
+                    lngBuff1[i] = lngBuff[i];
+                if(lngBuff[i]=='.')
+                    lngBuff1[i]= lngBuff[i];
+            }
+
             StringBuilder sb = new StringBuilder();
             sb.append(tempBuff1);
             tempF = Double.parseDouble(sb.toString());
             System.out.print("tempF: ");
             System.out.println(tempF);
+
+            StringBuilder sb1 = new StringBuilder();
+            sb1.append(latBuff1);
+            lat = Double.parseDouble(sb1.toString());
+            System.out.print("lat: ");
+            System.out.println(lat);
+
+            StringBuilder sb2 = new StringBuilder();
+            sb2.append(lngBuff1);
+            lng = Double.parseDouble(sb2.toString());
+            System.out.print("lng: ");
+            System.out.println(lng);
             //TEMP_PROBE1.setSnippet(Double.toString(tempF));
 
         }
