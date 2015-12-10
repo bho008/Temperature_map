@@ -36,41 +36,19 @@ import java.util.TimerTask;
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
     private GoogleMap mMap;
-    static final LatLng temp_probe1 = new LatLng(33.9756, -117.3313);
+    final static LatLng temp_probe1 = new LatLng(33.9756, -117.3313);
 
     private TextView tv;
 
     double tempF;
     double lat = 33.9756;
     double lng = -117.3313;
+    double olat = lat;
+    double olng = lng;
     Marker TEMP_PROBE1;
 
-    class MyInfoWindowAdapter implements GoogleMap.InfoWindowAdapter {
+    LatLng temp_probe_pos = new LatLng(lat, lng);
 
-        private final View myContentsView;
-
-        MyInfoWindowAdapter(){
-            myContentsView = getLayoutInflater().inflate(R.layout.custom_info_contents, null);
-        }
-
-        @Override
-        public View getInfoContents(Marker marker) {
-
-            TextView tvTitle = ((TextView)myContentsView.findViewById(R.id.title));
-            tvTitle.setText(marker.getTitle());
-            TextView tvSnippet = ((TextView)myContentsView.findViewById(R.id.snippet));
-            tvSnippet.setText(marker.getSnippet());
-
-            return myContentsView;
-        }
-
-        @Override
-        public View getInfoWindow(Marker marker) {
-            // TODO Auto-generated method stub
-            return null;
-        }
-
-    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,16 +59,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
-        //runUdpClient();
-        //finish();
 
-        /*
-        new Thread(new UDPServer()).start();
-        try{
-            Thread.sleep(200);
-        }
-        catch(InterruptedException e){}
-        */
+
         tempF = 0.00;
         UDPListenerService UDPListener = new UDPListenerService();
         UDPListener.startListenForUDPBroadcast();
@@ -150,7 +120,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 System.out.println("updating tempMarker");
                 TEMP_PROBE1.showInfoWindow();
 
+                if(lat == 0.0){
+                    temp_probe_pos = new LatLng(olat, olng);
+
+                }
+                else temp_probe_pos = new LatLng(lat, lng);
+                TEMP_PROBE1.setPosition(temp_probe_pos);
+
+                mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(temp_probe_pos, 18));
+
+
             }
+
             mHandler.postDelayed(updateTempMarker, 1000);
         }
     };
